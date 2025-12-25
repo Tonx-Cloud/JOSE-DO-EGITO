@@ -1,53 +1,43 @@
-// services/gemini.ts - Versão 100% Groq para Vite/Vercel
-export const transcribeAudio = async (base64Audio: string, mimeType: string) => {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY; // Padrão Vite
-
-  if (!apiKey) throw new Error("Chave VITE_GROQ_API_KEY não encontrada.");
-
-  const byteCharacters = atob(base64Audio);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const audioBlob = new Blob([byteArray], { type: mimeType });
-
-  const formData = new FormData();
-  formData.append("file", audioBlob, "audio.webm");
-  formData.append("model", "whisper-large-v3");
-  formData.append("language", "pt");
-
-  const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${apiKey}` },
-    body: formData
-  });
-
-  const data = await response.json();
-  return data.text;
-};
-
 export const interpretDream = async (name: string, gender: string, dreamText: string) => {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
   
-  const systemInstruction = `Você é José do Egito. Saude ${name} como ${gender === 'masculino' ? 'Prezado' : 'Prezada'}. Dê uma interpretação profética e profunda. Use negrito apenas em revelações chave.`;
+  if (!apiKey) throw new Error("API Key não encontrada.");
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: `Interprete este sonho: ${dreamText}` }
-      ],
-      model: "llama3-70b-8192",
-      temperature: 0.7
-    })
-  });
+  const systemInstruction = `Você é José do Egito, mestre dos sonhos. 
+Saude o usuário pelo nome: "${name}". 
+Use "Prezado" para masculino e "Prezada" para feminino: "${gender}". 
+Sua linguagem é sábia. Dê uma interpretação profética e direta. 
+Não use termos técnicos. Destaque o principal em negrito.`;
 
-  const data = await response.json();
-  return data.choices[0].message.content;
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: systemInstruction },
+          { role: "user", content: `Interprete este sonho: "${dreamText}"` }
+        ],
+        // Mudança para o modelo 8B (Mais rápido e com limites maiores no plano grátis)
+        model: "llama3-8b-8192", 
+        temperature: 0.7,
+        max_tokens: 1024
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Erro detalhado da Groq:", errorData); // Isso aparecerá no F12
+      throw new Error(errorData.error?.message || "Falha na interpretação");
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error("Erro na chamada de interpretação:", error);
+    throw error;
+  }
 };
