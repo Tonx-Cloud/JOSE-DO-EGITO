@@ -1,79 +1,53 @@
-
-// Importando o cliente GoogleGenAI conforme as diretrizes
-import { GoogleGenAI } from "@google/genai";
-
-/**
- * Serviços de IA - Utilizando o SDK oficial do Google Gemini
- * Transcrição via multimodalidade (Gemini 3 Flash)
- * Interpretação via raciocínio profundo (Gemini 3 Pro)
- */
-
-// Inicialização utilizando a variável de ambiente process.env.API_KEY de forma segura
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-/**
- * Transcreve o áudio utilizando o modelo multimodal Gemini 3 Flash.
- * O Gemini processa o áudio diretamente, eliminando a necessidade de serviços externos como Whisper.
- */
+// services/gemini.ts - Versão 100% Groq para Vite/Vercel
 export const transcribeAudio = async (base64Audio: string, mimeType: string) => {
-  try {
-    // Usando gemini-3-flash-preview para tarefas de transcrição e texto básicas
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [{
-        parts: [
-          {
-            inlineData: {
-              data: base64Audio,
-              mimeType: mimeType
-            }
-          },
-          { text: "Por favor, transcreva o relato de sonho contido no áudio acima. Retorne apenas o texto transcrito em português brasileiro." }
-        ]
-      }]
-    });
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY; // Padrão Vite
 
-    if (!response.text) {
-      throw new Error("Não foi possível extrair a transcrição do áudio.");
-    }
+  if (!apiKey) throw new Error("Chave VITE_GROQ_API_KEY não encontrada.");
 
-    return response.text.trim();
-  } catch (error) {
-    console.error("Erro técnico na transcrição Gemini:", error);
-    throw new Error("Falha na conexão com os céus. Verifique sua rede e tente novamente.");
+  const byteCharacters = atob(base64Audio);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
   }
+  const byteArray = new Uint8Array(byteNumbers);
+  const audioBlob = new Blob([byteArray], { type: mimeType });
+
+  const formData = new FormData();
+  formData.append("file", audioBlob, "audio.webm");
+  formData.append("model", "whisper-large-v3");
+  formData.append("language", "pt");
+
+  const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${apiKey}` },
+    body: formData
+  });
+
+  const data = await response.json();
+  return data.text;
 };
 
-/**
- * Interpreta o sonho utilizando a persona de José do Egito via Gemini 3 Pro.
- */
 export const interpretDream = async (name: string, gender: string, dreamText: string) => {
-  const systemInstruction = `Você é José do Egito, mestre dos sonhos. 
-Saude o usuário pelo nome: "${name}". 
-Use "Prezado" para masculino e "Prezada" para feminino baseado no gênero: "${gender}". 
-Sua linguagem é sábia e profunda. Dê uma interpretação profética e direta. 
-Não cite nomes de psicólogos ou termos técnicos acadêmicos. 
-Destaque em negrito apenas as revelações cruciais.`;
+  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+  
+  const systemInstruction = `Você é José do Egito. Saude ${name} como ${gender === 'masculino' ? 'Prezado' : 'Prezada'}. Dê uma interpretação profética e profunda. Use negrito apenas em revelações chave.`;
 
-  try {
-    // Usando gemini-3-pro-preview para tarefas complexas de raciocínio, criatividade e interpretação
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: `Interprete este sonho: "${dreamText}"`,
-      config: {
-        systemInstruction: systemInstruction,
-        temperature: 0.8,
-        topP: 0.95
-      }
-    });
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messages: [
+        { role: "system", content: systemInstruction },
+        { role: "user", content: `Interprete este sonho: ${dreamText}` }
+      ],
+      model: "llama3-70b-8192",
+      temperature: 0.7
+    })
+  });
 
-    if (!response.text) {
-      throw new Error("Os oráculos não retornaram uma resposta válida.");
-    }
-
-    return response.text;
-  } catch (error) {
-    console.error("Erro técnico na interpretação Gemini:", error);
-    throw new Error("Os oráculos estão silenciosos no momento. Tente novamente em instantes.");
-  }
+  const data = await response.json();
+  return data.choices[0].message.content;
 };
