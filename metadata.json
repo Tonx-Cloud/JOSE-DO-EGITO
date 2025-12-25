@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Lumina AI Studio",
+  "description": "A high-end multi-modal creative platform powered by Gemini 3 and 2.5 models. Experience advanced chat, image generation, and real-time voice interactions in one sleek interface.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
