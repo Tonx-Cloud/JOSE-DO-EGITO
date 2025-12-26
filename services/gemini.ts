@@ -1,9 +1,4 @@
-// services/gemini.ts - Versão corrigida para exportação compatível
-
-/**
- * Transcreve o áudio utilizando Whisper via Groq
- */
-export const transcribeAudio = async (base64Audio: string, mimeType: string) => {
+  export const transcribeAudio = async (base64Audio: string, mimeType: string) => {
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
 
   if (!apiKey) throw new Error("Chave VITE_GROQ_API_KEY não configurada na Vercel.");
