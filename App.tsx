@@ -1,5 +1,5 @@
 // App.tsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { interpretDream, transcribeAudio } from './services/gemini';
 
 interface Message {
@@ -15,6 +15,18 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Cleanup da síntese de fala ao desmontar
+  useEffect(() => {
+    return () => {
+      if (speechSynthesisRef.current) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   const handleInterpret = async () => {
     if (!name.trim() || !dreamText.trim()) {
@@ -89,59 +101,147 @@ export default function App() {
     }
   };
 
+  const speakInterpretation = (text: string) => {
+    // Cancelar fala anterior se existir
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'pt-BR';
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      setIsPaused(false);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      setIsPaused(false);
+      speechSynthesisRef.current = null;
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      setIsPaused(false);
+      speechSynthesisRef.current = null;
+    };
+
+    speechSynthesisRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const togglePauseSpeech = () => {
+    if (isPaused) {
+      window.speechSynthesis.resume();
+      setIsPaused(false);
+    } else {
+      window.speechSynthesis.pause();
+      setIsPaused(true);
+    }
+  };
+
+  const stopSpeech = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsPaused(false);
+    speechSynthesisRef.current = null;
+  };
+
+  const newDream = () => {
+    setDreamText('');
+    setMessages([]);
+    stopSpeech();
+  };
+
+  const lastAssistantMessage = messages
+    .slice()
+    .reverse()
+    .find((msg) => msg.role === 'assistant');
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8 mb-6">
-          <h1 className="text-4xl font-bold text-white text-center mb-2">
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-4 pb-8">
+      <div className="max-w-2xl mx-auto">
+        {/* Header */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6 mb-6 text-center">
+          <div className="text-6xl mb-3">🌙</div>
+          <h1 className="text-4xl font-bold text-white mb-2">
             José do Egito
           </h1>
-          <p className="text-white/80 text-center mb-8">
+          <p className="text-white/90 text-xl">
             Intérprete de Sonhos
           </p>
+        </div>
 
-          <div className="space-y-4 mb-6">
+        {/* Formulário ou Resultado */}
+        {messages.length === 0 ? (
+          <div className="bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6 space-y-5">
+            {/* Nome */}
             <div>
-              <label className="block text-white mb-2">Seu Nome:</label>
+              <label className="block text-white text-xl font-semibold mb-3">
+                👤 Seu Nome:
+              </label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                className="w-full px-6 py-4 text-xl rounded-2xl bg-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-4 focus:ring-purple-400 border-2 border-white/30"
                 placeholder="Digite seu nome"
               />
             </div>
 
+            {/* Gênero */}
             <div>
-              <label className="block text-white mb-2">Gênero:</label>
-              <select
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg bg-white/20 text-white focus:outline-none focus:ring-2 focus:ring-purple-400"
-              >
-                <option value="masculino">Masculino</option>
-                <option value="feminino">Feminino</option>
-              </select>
+              <label className="block text-white text-xl font-semibold mb-3">
+                ⚧ Gênero:
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setGender('masculino')}
+                  className={`py-4 px-6 text-xl rounded-2xl font-semibold transition-all border-2 ${
+                    gender === 'masculino'
+                      ? 'bg-blue-500 text-white border-blue-300 scale-105'
+                      : 'bg-white/20 text-white border-white/30'
+                  }`}
+                >
+                  Masculino
+                </button>
+                <button
+                  onClick={() => setGender('feminino')}
+                  className={`py-4 px-6 text-xl rounded-2xl font-semibold transition-all border-2 ${
+                    gender === 'feminino'
+                      ? 'bg-pink-500 text-white border-pink-300 scale-105'
+                      : 'bg-white/20 text-white border-white/30'
+                  }`}
+                >
+                  Feminino
+                </button>
+              </div>
             </div>
 
+            {/* Sonho */}
             <div>
-              <label className="block text-white mb-2">Conte seu Sonho:</label>
+              <label className="block text-white text-xl font-semibold mb-3">
+                💭 Conte seu Sonho:
+              </label>
               <textarea
                 value={dreamText}
                 onChange={(e) => setDreamText(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg bg-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-purple-400 h-32 resize-none"
-                placeholder="Descreva seu sonho em detalhes..."
+                className="w-full px-6 py-4 text-xl rounded-2xl bg-white/20 text-white placeholder-white/60 focus:outline-none focus:ring-4 focus:ring-purple-400 h-40 resize-none border-2 border-white/30"
+                placeholder="Descreva seu sonho aqui..."
               />
             </div>
 
-            <div className="flex gap-4">
+            {/* Botões */}
+            <div className="space-y-4">
               <button
                 onClick={isRecording ? stopRecording : startRecording}
-                className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+                className={`w-full py-5 text-2xl rounded-2xl font-bold transition-all shadow-lg ${
                   isRecording
-                    ? 'bg-red-500 hover:bg-red-600'
+                    ? 'bg-red-500 hover:bg-red-600 animate-pulse'
                     : 'bg-purple-500 hover:bg-purple-600'
-                } text-white`}
+                } text-white border-2 border-white/30`}
                 disabled={isLoading}
               >
                 {isRecording ? '⏹ Parar Gravação' : '🎤 Gravar Sonho'}
@@ -150,33 +250,74 @@ export default function App() {
               <button
                 onClick={handleInterpret}
                 disabled={isLoading || !name.trim() || !dreamText.trim()}
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-5 text-2xl rounded-2xl font-bold hover:from-yellow-500 hover:to-orange-600 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed border-2 border-white/30"
               >
                 {isLoading ? '⏳ Interpretando...' : '✨ Interpretar Sonho'}
               </button>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Resultado da Interpretação */}
+            <div className="bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-3xl font-bold text-white flex items-center gap-2">
+                  📜 Interpretação
+                </h2>
+              </div>
 
-        {messages.length > 0 && (
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl shadow-2xl p-8">
-            <h2 className="text-2xl font-bold text-white mb-4">Interpretação:</h2>
-            <div className="space-y-4">
-              {messages.map((msg, idx) => (
-                <div
-                  key={idx}
-                  className={`p-4 rounded-lg ${
-                    msg.role === 'user'
-                      ? 'bg-purple-500/30 ml-8'
-                      : 'bg-blue-500/30 mr-8'
-                  }`}
-                >
-                  <p className="text-white whitespace-pre-wrap">{msg.content}</p>
+              {lastAssistantMessage && (
+                <div className="bg-gradient-to-br from-purple-500/30 to-blue-500/30 rounded-2xl p-6 border-2 border-white/20">
+                  <p className="text-white text-xl leading-relaxed whitespace-pre-wrap">
+                    {lastAssistantMessage.content}
+                  </p>
                 </div>
-              ))}
+              )}
+
+              {/* Controles de Áudio */}
+              {lastAssistantMessage && (
+                <div className="mt-6 space-y-4">
+                  {!isSpeaking ? (
+                    <button
+                      onClick={() => speakInterpretation(lastAssistantMessage.content)}
+                      className="w-full bg-green-500 hover:bg-green-600 text-white py-5 text-2xl rounded-2xl font-bold transition-all shadow-lg border-2 border-white/30"
+                    >
+                      🔊 Ouvir Interpretação
+                    </button>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={togglePauseSpeech}
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white py-5 text-2xl rounded-2xl font-bold transition-all shadow-lg border-2 border-white/30"
+                      >
+                        {isPaused ? '▶️ Continuar' : '⏸ Pausar'}
+                      </button>
+                      <button
+                        onClick={stopSpeech}
+                        className="bg-red-500 hover:bg-red-600 text-white py-5 text-2xl rounded-2xl font-bold transition-all shadow-lg border-2 border-white/30"
+                      >
+                        ⏹ Parar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Botão Novo Sonho */}
+              <button
+                onClick={newDream}
+                className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white py-5 text-2xl rounded-2xl font-bold hover:from-indigo-600 hover:to-purple-700 transition-all shadow-lg border-2 border-white/30"
+              >
+                🌟 Interpretar Novo Sonho
+              </button>
             </div>
           </div>
         )}
+
+        {/* Footer */}
+        <div className="text-center mt-8 text-white/70 text-lg">
+          <p>✨ Compartilhe seus sonhos e encontre significado ✨</p>
+        </div>
       </div>
     </div>
   );
