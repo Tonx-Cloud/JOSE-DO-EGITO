@@ -1,68 +1,133 @@
-  export const transcribeAudio = async (base64Audio: string, mimeType: string) => {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+// services/gemini.ts
 
-  if (!apiKey) throw new Error("Chave VITE_GROQ_API_KEY não configurada na Vercel.");
+interface TranscriptionResponse {
+  text: string;
+}
 
-  // Conversão de Base64 para Blob
-  const byteCharacters = atob(base64Audio);
-  const byteNumbers = new Array(byteCharacters.length);
-  for (let i = 0; i < byteCharacters.length; i++) {
-    byteNumbers[i] = byteCharacters.charCodeAt(i);
-  }
-  const byteArray = new Uint8Array(byteNumbers);
-  const audioBlob = new Blob([byteArray], { type: mimeType });
-
-  const formData = new FormData();
-  formData.append("file", audioBlob, "audio.webm");
-  formData.append("model", "whisper-large-v3");
-  formData.append("language", "pt");
-
-  const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${apiKey}` },
-    body: formData
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || "Falha na transcrição.");
-  }
-
-  const data = await response.json();
-  return data.text;
-};
+interface DreamInterpretationResponse {
+  interpretation: string;
+}
 
 /**
- * Interpreta o sonho utilizando Llama 3 via Groq
+ * Transcreve áudio usando a API Groq
+ * @param base64Audio - Áudio em formato base64
+ * @param mimeType - Tipo MIME do áudio (ex: audio/webm, audio/mp3)
+ * @returns Texto transcrito
  */
-export const interpretDream = async (name: string, gender: string, dreamText: string) => {
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
-  
-  if (!apiKey) throw new Error("Chave VITE_GROQ_API_KEY não configurada.");
+export async function transcribeAudio(
+  base64Audio: string,
+  mimeType: string
+): Promise<string> {
+  try {
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('VITE_GROQ_API_KEY não encontrada nas variáveis de ambiente');
+    }
 
-  const systemInstruction = `Você é José do Egito. Saude ${name} como ${gender === 'masculino' ? 'Prezado' : 'Prezada'}. Dê uma interpretação profética e profunda. Use negrito para pontos cruciais.`;
+    // Converte base64 para Blob
+    const byteString = atob(base64Audio.split(',')[1] || base64Audio);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    
+    const blob = new Blob([ab], { type: mimeType });
+    
+    // Cria FormData para envio
+    const formData = new FormData();
+    formData.append('file', blob, 'audio.webm');
+    formData.append('model', 'whisper-large-v3');
+    formData.append('language', 'pt');
+    formData.append('response_format', 'json');
 
-  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: `Interprete este sonho: "${dreamText}"` }
-      ],
-      model: "llama3-8b-8192", // Modelo estável para o plano free
-      temperature: 0.7
-    })
-  });
+    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: formData,
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || "Falha na interpretação.");
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        `Erro na transcrição: ${response.status} - ${JSON.stringify(errorData)}`
+      );
+    }
+
+    const data: TranscriptionResponse = await response.json();
+    return data.text || '';
+  } catch (error) {
+    console.error('Erro ao transcrever áudio:', error);
+    throw error;
   }
+}
 
-  const data = await response.json();
-  return data.choices[0].message.content;
-};
+/**
+ * Interpreta sonhos usando a API Groq
+ * @param name - Nome da pessoa
+ * @param gender - Gênero (masculino/feminino)
+ * @param dreamText - Texto do sonho
+ * @returns Interpretação do sonho
+ */
+export async function interpretDream(
+  name: string,
+  gender: string,
+  dreamText: string
+): Promise<string> {
+  try {
+    const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error('VITE_GROQ_API_KEY não encontrada nas variáveis de ambiente');
+    }
+
+    const prompt = `Você é José do Egito, o famoso intérprete de sonhos bíblico. 
+    
+Interprete o seguinte sonho de ${name} (${gender}):
+
+"${dreamText}"
+
+Forneça uma interpretação profunda e significativa, considerando simbolismos bíblicos e psicológicos.
+Use uma linguagem respeitosa e inspiradora.`;
+
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é José do Egito, sábio intérprete de sonhos da Bíblia.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 1024,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        `Erro na interpretação: ${response.status} - ${JSON.stringify(errorData)}`
+      );
+    }
+
+    const data = await response.json();
+    return data.choices[0]?.message?.content || 'Não foi possível interpretar o sonho.';
+  } catch (error) {
+    console.error('Erro ao interpretar sonho:', error);
+    throw error;
+  }
+}
